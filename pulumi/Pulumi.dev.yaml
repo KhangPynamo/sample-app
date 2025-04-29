@@ -1,0 +1,4 @@
+config:
+  renovalab:project: multi-agent-chatbot
+  renovalab:env: dev
+  aws:region: ap-southeast-1
