@@ -1,0 +1,18 @@
+import os
+
+# for local testing with `.env` file only
+from dotenv import load_dotenv
+load_dotenv()
+
+# AWS & Bedrock Configuration
+AWS_PROFILE = os.getenv("AWS_PROFILE")
+AWS_CURRENT_REGION = os.getenv("AWS_CURRENT_REGION")
+AWS_BEDROCK_REGION = os.getenv("AWS_BEDROCK_REGION")
+AWS_RDS_CREDENTIALS_AND_CONFIG_ARN = os.getenv("AWS_RDS_CREDENTIALS_AND_CONFIG_ARN")
+
+AWS_BEDROCK_LLM_ID = os.getenv("AWS_BEDROCK_LLM_ID")
+AWS_BEDROCK_EMBEDDING_MODEL_ID = os.getenv("AWS_BEDROCK_EMBEDDING_MODEL_ID")
+AWS_BEDROCK_EMBEDDING_MODEL_DIMENSION = int(os.getenv("AWS_BEDROCK_EMBEDDING_MODEL_DIMENSION", "512"))
+
+# RDS/Vector Config
+AWS_RDS_PG_VECTOR_DIMENSION = int(os.getenv("AWS_RDS_PG_VECTOR_DIMENSION", "512"))
