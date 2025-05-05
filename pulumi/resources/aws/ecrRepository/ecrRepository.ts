@@ -18,6 +18,7 @@ class EcrRepository extends pulumi.ComponentResource {
         this.repositoryUrl = this.repository.repository.repositoryUrl;
 
         this.registerOutputs({
+            repositoryArn: this.repository.repository.arn,
             repositoryUrl: this.repositoryUrl,
             repository: this.repository,
         });
