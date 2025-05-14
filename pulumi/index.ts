@@ -5,6 +5,7 @@ import { getAwsProvider } from "./config/awsProvider";
 
 import { createS3Bucket } from "./infra/aws/s3";
 import { createEcrRepository, pushImageECR } from "./infra/aws/ecr";
+import { createLambdaFunctionImage } from "./infra/aws/lambda";
 import { createWebSocketApiGateway } from "./infra/aws/apiGateway";
 
 const awsProvider = getAwsProvider();
@@ -43,6 +44,23 @@ const chatbotAppImage = pushImageECR(
     versionFilePath: path.join(__dirname, "../apps/chat/VERSION"),
   },
   { provider: awsProvider, dependsOn: [ecrRepo.repository] }
+);
+
+createLambdaFunctionImage(
+  getResourceName("chatbot-lambda"),
+  {
+    ecrImageUri: chatbotAppImage.imageUri,
+    ecrRepositoryArn: ecrRepo.repository.repository.arn,
+    ecrRepositoryUrl: ecrRepo.repositoryUrl,
+    functionName: getResourceName("chatbot-lambda"),
+    memorySize: 512,
+    timeout: 60,
+    tags: {
+      ...getGlobalTags(),
+      Resource: "Lambda",
+    },
+  },
+  { provider: awsProvider, dependsOn: [chatbotAppImage.image] }
 );
 
 createWebSocketApiGateway(
