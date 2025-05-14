@@ -6,7 +6,6 @@ import { getGlobalTags, getResourceName } from "./config/naming";
 import { getAwsProvider } from "./config/awsProvider";
 
 import { createEcrRepository, pushImageECR } from "./infra/aws/ecr";
-import { createLambdaFunctionImage } from "./infra/aws/lambda";
 
 const awsProvider = getAwsProvider();
 
@@ -35,15 +34,65 @@ const chatbotAppImage = pushImageECR(
     { provider: awsProvider, dependsOn: [ecrRepo.repository] }
 );
 
-const chatbotLambda = createLambdaFunctionImage(
+const chatbotLambdaRole = new aws.iam.Role(
+    getResourceName("chatbot-lambda-role"),
+    {
+        assumeRolePolicy: aws.iam.assumeRolePolicyForPrincipal({
+            Service: "lambda.amazonaws.com",
+        }),
+        tags: {
+            ...getGlobalTags(),
+            Resource: "IAMRole",
+        },
+    },
+    { provider: awsProvider }
+);
+
+new aws.iam.RolePolicyAttachment(
+    getResourceName("chatbot-lambda-policy-basic-execution"),
+    {
+        role: chatbotLambdaRole.name,
+        policyArn: aws.iam.ManagedPolicy.AWSLambdaBasicExecutionRole,
+    },
+    { provider: awsProvider, parent: chatbotLambdaRole }
+);
+
+new aws.iam.RolePolicyAttachment(
+    getResourceName("chatbot-lambda-policy-vpc-access"),
+    {
+        role: chatbotLambdaRole.name,
+        policyArn: aws.iam.ManagedPolicy.AWSLambdaVPCAccessExecutionRole,
+    },
+    { provider: awsProvider, parent: chatbotLambdaRole }
+);
+
+new aws.iam.RolePolicy(
+    getResourceName("chatbot-lambda-ecr-policy"),
+    {
+        role: chatbotLambdaRole.name,
+        policy: pulumi.interpolate`{
+            "Version": "2012-10-17",
+            "Statement": [
+                {
+                    "Action": ["ecr:BatchGetImage", "ecr:GetDownloadToken"],
+                    "Effect": "Allow",
+                    "Resource": "${ecrRepo.repositoryArn}"
+                }
+            ]
+        }`,
+    },
+    { provider: awsProvider, parent: chatbotLambdaRole }
+);
+
+const chatbotLambdaFunction = new aws.lambda.Function(
     getResourceName("chatbot-lambda"),
     {
-        ecrImageUri: chatbotAppImage.imageUri,
-        ecrRepositoryArn: ecrRepo.repository.repository.arn,
-        ecrRepositoryUrl: ecrRepo.repositoryUrl,
-        functionName: getResourceName("chatbot-lambda"),
+        packageType: "Image",
+        imageUri: chatbotAppImage.imageUri,
         memorySize: 512,
         timeout: 60,
+        role: chatbotLambdaRole.arn,
+        name: getResourceName("chatbot-lambda"),
         tags: {
             ...getGlobalTags(),
             Resource: "Lambda",
@@ -72,10 +121,10 @@ const lambdaIntegration = new aws.apigatewayv2.Integration(
     {
         apiId: websocketApi.id,
         integrationType: "AWS_PROXY",
-        integrationUri: chatbotLambda.lambdaFunctionArn,
+        integrationUri: chatbotLambdaFunction.arn,
         integrationMethod: "POST",
     },
-    { provider: awsProvider, dependsOn: [websocketApi] }
+    { provider: awsProvider, dependsOn: [websocketApi, chatbotLambdaFunction] }
 );
 
 const routes = ["$connect", "$disconnect", "sendmessage"];
@@ -95,12 +144,13 @@ routes.forEach((routeKey) => {
         getResourceName(`allow-apigw-invoke-${routeKey.replace("$", "")}`),
         {
             action: "lambda:InvokeFunction",
-            function: chatbotLambda.lambdaFunctionArn,
+            function: chatbotLambdaFunction.arn,
             principal: "apigateway.amazonaws.com",
             sourceArn: pulumi.interpolate`${websocketApi.executionArn}/*/${routeKey}`,
         },
-        { provider: awsProvider, dependsOn: [websocketApi] }
+        { provider: awsProvider, dependsOn: [websocketApi, chatbotLambdaFunction] }
     );
 });
 
+export const lambdaFunctionArn = chatbotLambdaFunction.arn;
 export const websocketApiUrl = websocketApi.apiEndpoint;
