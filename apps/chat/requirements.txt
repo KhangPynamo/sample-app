@@ -1,0 +1,11 @@
+boto3==1.38.0
+langchain==0.3.24
+langchain-aws==0.2.21
+langchain-community==0.3.22
+langchain-core==0.3.55
+langgraph==0.3.31
+psycopg2-binary==2.9.10
+websockets==15.0.1
+pgvector==0.4.0
+python-dotenv
+websockets>=10.4
