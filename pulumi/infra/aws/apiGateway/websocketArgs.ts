@@ -1,7 +1,7 @@
 import * as pulumi from "@pulumi/pulumi";
 
 export interface RouteOptions {
-  integrationUri: pulumi.Input<string>;
+  integrationUri?: pulumi.Input<string>;
 }
 
 export interface ApiGatewayWebSocketArgs {
