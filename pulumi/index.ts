@@ -1,15 +1,15 @@
 import * as pulumi from "@pulumi/pulumi";
 import * as aws from "@pulumi/aws";
+import * as awsx from "@pulumi/awsx";
 import * as path from "path";
+import * as fs from "fs";
 
 import { getGlobalTags, getResourceName } from "./config/naming";
 import { getAwsProvider } from "./config/awsProvider";
 
-import { createEcrRepository, pushImageECR } from "./infra/aws/ecr";
-
 const awsProvider = getAwsProvider();
 
-const ecrRepo = createEcrRepository(
+const ecrRepo = new awsx.ecr.Repository(
     getResourceName("chatbot"),
     {
         tags: {
@@ -17,21 +17,36 @@ const ecrRepo = createEcrRepository(
             Resource: "Container",
         },
         imageTagMutability: "IMMUTABLE",
-        scanOnPush: true,
+        imageScanningConfiguration: {
+            scanOnPush: true,
+        },
     },
     { provider: awsProvider }
 );
 
-const chatbotAppImage = pushImageECR(
+const readFileVersion = (versionFilePath: string): pulumi.Output<string> => {
+    return pulumi.output(versionFilePath).apply((filePath) => {
+        try {
+            const rawData = fs.readFileSync(filePath, "utf-8");
+            return rawData.trim();
+        } catch (error: any) {
+            throw new Error(
+                `Failed to read version from ${filePath}: ${error.message}`
+            );
+        }
+    });
+};
+
+const chatbotAppImage = new awsx.ecr.Image(
     getResourceName("chatbot-image"),
     {
-        repositoryUrl: ecrRepo.repositoryUrl,
+        repositoryUrl: ecrRepo.url,
         context: path.join(__dirname, "../apps/chat"),
         dockerfile: path.join(__dirname, "../apps/chat/Dockerfile"),
         platform: "linux/arm64",
-        versionFilePath: path.join(__dirname, "../apps/chat/VERSION"),
+        imageTag: readFileVersion(path.join(__dirname, "../apps/chat/VERSION")),
     },
-    { provider: awsProvider, dependsOn: [ecrRepo.repository] }
+    { provider: awsProvider, dependsOn: [ecrRepo] }
 );
 
 const chatbotLambdaRole = new aws.iam.Role(
@@ -76,7 +91,7 @@ new aws.iam.RolePolicy(
                 {
                     "Action": ["ecr:BatchGetImage", "ecr:GetDownloadToken"],
                     "Effect": "Allow",
-                    "Resource": "${ecrRepo.repositoryArn}"
+                    "Resource": "${ecrRepo.repository.arn}"
                 }
             ]
         }`,
@@ -98,7 +113,7 @@ const chatbotLambdaFunction = new aws.lambda.Function(
             Resource: "Lambda",
         },
     },
-    { provider: awsProvider, dependsOn: [chatbotAppImage.image] }
+    { provider: awsProvider, dependsOn: [chatbotAppImage] }
 );
 
 const websocketApi = new aws.apigatewayv2.Api(
@@ -154,3 +169,5 @@ routes.forEach((routeKey) => {
 
 export const lambdaFunctionArn = chatbotLambdaFunction.arn;
 export const websocketApiUrl = websocketApi.apiEndpoint;
+export const ecrRepositoryUrl = ecrRepo.url;
+export const ecrRepositoryArn = ecrRepo.repository.arn;
