@@ -4,6 +4,7 @@ import * as awsx from "@pulumi/awsx";
 import * as path from "path";
 import * as fs from "fs";
 
+import { readFile } from "./config/readFile"
 import { getGlobalTags, getResourceName } from "./config/naming";
 import { getAwsProvider } from "./config/awsProvider";
 
@@ -24,18 +25,7 @@ const ecrRepo = new awsx.ecr.Repository(
     { provider: awsProvider }
 );
 
-const readFileVersion = (versionFilePath: string): pulumi.Output<string> => {
-    return pulumi.output(versionFilePath).apply((filePath) => {
-        try {
-            const rawData = fs.readFileSync(filePath, "utf-8");
-            return rawData.trim();
-        } catch (error: any) {
-            throw new Error(
-                `Failed to read version from ${filePath}: ${error.message}`
-            );
-        }
-    });
-};
+const appVersion = readFile(path.join(__dirname, "../apps/chat/VERSION"));
 
 const chatbotAppImage = new awsx.ecr.Image(
     getResourceName("chatbot-image"),
@@ -44,7 +34,7 @@ const chatbotAppImage = new awsx.ecr.Image(
         context: path.join(__dirname, "../apps/chat"),
         dockerfile: path.join(__dirname, "../apps/chat/Dockerfile"),
         platform: "linux/arm64",
-        imageTag: readFileVersion(path.join(__dirname, "../apps/chat/VERSION")),
+        imageTag: appVersion,
     },
     { provider: awsProvider, dependsOn: [ecrRepo] }
 );
